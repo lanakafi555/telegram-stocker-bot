@@ -5,6 +5,11 @@ import pytz
 from utils.sheets import sheet_dry, sheet_frozen, sheet_database
 
 
+# ================= NORMALIZE =================
+def normalize(text):
+    return str(text).strip().lower()
+
+
 # ================= FORMAT QTY =================
 def format_qty(qty):
     match = re.match(r"(\d+)([a-zA-Z]+)", qty)
@@ -18,12 +23,13 @@ def format_qty(qty):
 # ================= AMBIL DATA BARANG =================
 def get_barang_info(nama_input):
     data = sheet_database.get_all_records()
+    nama_input = normalize(nama_input)
 
     for row in data:
-        nama = str(row.get("Nama", "")).lower()
-        alias = str(row.get("Alias", "")).lower()
+        nama = normalize(row.get("nama_barang", ""))
+        alias = normalize(row.get("alias", ""))
 
-        if nama_input.lower() == nama or nama_input.lower() == alias:
+        if nama_input == nama or nama_input == alias:
             return row
 
     return None
@@ -32,7 +38,7 @@ def get_barang_info(nama_input):
 # ================= HANDLE BELANJA =================
 async def handle_belanja(update, context):
     user_id = update.effective_user.id
-    text = update.message.text.strip().lower()
+    text = update.message.text.strip()
 
     lines = text.split("\n")
 
@@ -62,17 +68,19 @@ async def handle_belanja(update, context):
                 error_list.append(f"❌ Tidak ditemukan: {barang_input}")
                 continue
 
-            nama_barang = info["Nama"]
-            kategori = info["Tipe"]
-            keterangan = info.get("Keterangan", "-")
+            nama_barang = info["nama_barang"]
+            kategori = info.get("tipe", "dry")  # default dry
+            keterangan = info.get("keterangan", "-")
 
             qty_formatted = format_qty(qty)
 
-            # pilih sheet
-            if str(kategori).lower() == "frozen":
+            # pilih sheet otomatis
+            if normalize(kategori) == "frozen":
                 target_sheet = sheet_frozen
+                kategori_label = "Frozen"
             else:
                 target_sheet = sheet_dry
+                kategori_label = "Dry"
 
             # simpan ke sheet
             target_sheet.append_row([
@@ -85,7 +93,7 @@ async def handle_belanja(update, context):
             ])
 
             # simpan untuk summary
-            success_list.append(f"- {nama_barang} ({qty_formatted})")
+            success_list.append(f"- {nama_barang.title()} ({qty_formatted})")
 
         except Exception as e:
             print("ERROR BELANJA:", e)
