@@ -3,6 +3,7 @@ from datetime import datetime
 import pytz
 
 from utils.sheets import sheet_dry, sheet_frozen, sheet_database
+from config import ALLOWED_USERS
 
 
 # ================= NORMALIZE =================
@@ -38,8 +39,14 @@ def get_barang_info(nama_input):
 # ================= HANDLE BELANJA =================
 async def handle_belanja(update, context):
     user_id = update.effective_user.id
-    text = update.message.text.strip()
 
+    # 🔥 ambil nama user (prioritas config → fallback ke telegram)
+    user = ALLOWED_USERS.get(
+        user_id,
+        update.effective_user.first_name
+    )
+
+    text = update.message.text.strip()
     lines = text.split("\n")
 
     timezone = pytz.timezone("Asia/Jakarta")
@@ -52,7 +59,6 @@ async def handle_belanja(update, context):
         try:
             parts = line.strip().split()
 
-            # validasi minimal input
             if len(parts) < 3:
                 error_list.append(f"❌ Format salah: {line}")
                 continue
@@ -61,7 +67,6 @@ async def handle_belanja(update, context):
             qty = parts[1]
             kode = parts[2]
 
-            # ambil dari database
             info = get_barang_info(barang_input)
 
             if not info:
@@ -69,7 +74,7 @@ async def handle_belanja(update, context):
                 continue
 
             nama_barang = info["nama_barang"]
-            kategori = info.get("tipe", "dry")  # default dry
+            kategori = info.get("tipe", "dry")
             keterangan = info.get("keterangan", "-")
 
             qty_formatted = format_qty(qty)
@@ -77,10 +82,8 @@ async def handle_belanja(update, context):
             # pilih sheet otomatis
             if normalize(kategori) == "frozen":
                 target_sheet = sheet_frozen
-                kategori_label = "Frozen"
             else:
                 target_sheet = sheet_dry
-                kategori_label = "Dry"
 
             # simpan ke sheet
             target_sheet.append_row([
@@ -88,11 +91,10 @@ async def handle_belanja(update, context):
                 kode,
                 jam,
                 qty_formatted,
-                user_id,
+                user,          # 🔥 FIX: sekarang nama, bukan ID
                 keterangan
             ])
 
-            # simpan untuk summary
             success_list.append(f"- {nama_barang.title()} ({qty_formatted})")
 
         except Exception as e:
@@ -103,12 +105,10 @@ async def handle_belanja(update, context):
     messages = []
 
     if success_list:
-        success_text = "✅ Berhasil input:\n" + "\n".join(success_list)
-        messages.append(success_text)
+        messages.append("✅ Berhasil input:\n" + "\n".join(success_list))
 
     if error_list:
-        error_text = "\n".join(error_list)
-        messages.append(error_text)
+        messages.append("\n".join(error_list))
 
     if messages:
         await update.message.reply_text("\n\n".join(messages))
