@@ -1,9 +1,16 @@
 import re
-from datetime import datetime
 import pytz
 
-from utils.sheets import sheet_dry, sheet_frozen, sheet_database
+from datetime import datetime
+
 from config import ALLOWED_USERS
+
+from utils.sheets import (
+    sheet_database,
+    spreadsheet_belanja
+)
+
+from utils.append import append_custom
 
 
 # ================= NORMALIZE =================
@@ -11,104 +18,239 @@ def normalize(text):
     return str(text).strip().lower()
 
 
-# ================= FORMAT QTY =================
-def format_qty(qty):
-    match = re.match(r"(\d+)([a-zA-Z]+)", qty)
-    if match:
-        angka = match.group(1)
-        satuan = match.group(2).lower()
-        return f"{angka} {satuan}"
-    return qty
+# ================= LOAD DATABASE =================
+def load_database():
 
-
-# ================= AMBIL DATA BARANG =================
-def get_barang_info(nama_input):
     data = sheet_database.get_all_records()
-    nama_input = normalize(nama_input)
+
+    database = {}
 
     for row in data:
-        nama = normalize(row.get("nama_barang", ""))
-        alias = normalize(row.get("alias", ""))
 
-        if nama_input == nama or nama_input == alias:
-            return row
+        nama_barang = normalize(
+            row.get("nama_barang", "")
+        )
 
-    return None
+        alias = normalize(
+            row.get("alias", "")
+        )
+
+        # ================= AMBIL TIPE =================
+        kategori = normalize(
+            row.get("tipe", "")
+        )
+
+        # ================= AMBIL KETERANGAN =================
+        keterangan = row.get(
+            "keterangan",
+            "-"
+        )
+
+        item_data = {
+            "nama": row.get("nama_barang"),
+            "kategori": kategori,
+            "keterangan": keterangan
+        }
+
+        # ================= NAMA BARANG =================
+        if nama_barang:
+
+            database[nama_barang] = item_data
+
+        # ================= ALIAS =================
+        if alias:
+
+            database[alias] = item_data
+
+    return database
+
+
+# ================= PARSE INPUT =================
+def parse_line(text):
+
+    """
+    Format:
+    milo 2pack 060526.01
+
+    hasil:
+    nama = milo
+    qty = 2 pack
+    kode = 060526.01
+    """
+
+    pattern = r"(.+?)\s+(.+?)\s+([\d\.]+)$"
+
+    match = re.match(
+        pattern,
+        text.strip(),
+        re.IGNORECASE
+    )
+
+    if not match:
+        return None
+
+    nama = match.group(1).strip()
+
+    qty_raw = match.group(2).strip()
+
+    kode = match.group(3).strip()
+
+    # ================= FORMAT QTY =================
+    qty_match = re.match(
+        r"(\d+)([a-zA-Z]+)",
+        qty_raw
+    )
+
+    if qty_match:
+
+        angka = qty_match.group(1)
+
+        satuan = qty_match.group(2)
+
+        qty = f"{angka} {satuan}"
+
+    else:
+
+        qty = qty_raw
+
+    return {
+        "nama": nama,
+        "qty": qty,
+        "kode": kode
+    }
 
 
 # ================= HANDLE BELANJA =================
 async def handle_belanja(update, context):
+
     user_id = update.effective_user.id
 
-    # 🔥 ambil nama user (prioritas config → fallback ke telegram)
-    user = ALLOWED_USERS.get(
-        user_id,
-        update.effective_user.first_name
-    )
+    # ================= CEK AKSES =================
+    if user_id not in ALLOWED_USERS:
+
+        await update.message.reply_text(
+            "❌ Kamu tidak memiliki akses."
+        )
+
+        return
+
+    user = ALLOWED_USERS[user_id]
 
     text = update.message.text.strip()
+
+    # ================= MULTILINE =================
     lines = text.split("\n")
 
+    database = load_database()
+
     timezone = pytz.timezone("Asia/Jakarta")
-    jam = datetime.now(timezone).strftime("%H.%M")
 
-    success_list = []
-    error_list = []
+    now = datetime.now(timezone)
 
+    jam = now.strftime("%H.%M")
+
+    # ================= SHEET HARIAN =================
+    today_sheet = now.strftime("%d")
+
+    sheet_harian = spreadsheet_belanja.worksheet(
+        today_sheet
+    )
+
+    berhasil = []
+
+    gagal = []
+
+    # ================= LOOP INPUT =================
     for line in lines:
-        try:
-            parts = line.strip().split()
 
-            if len(parts) < 3:
-                error_list.append(f"❌ Format salah: {line}")
-                continue
+        parsed = parse_line(line)
 
-            barang_input = parts[0]
-            qty = parts[1]
-            kode = parts[2]
+        # ================= FORMAT SALAH =================
+        if not parsed:
 
-            info = get_barang_info(barang_input)
+            gagal.append(
+                f"❌ Format salah: {line}"
+            )
 
-            if not info:
-                error_list.append(f"❌ Tidak ditemukan: {barang_input}")
-                continue
+            continue
 
-            nama_barang = info["nama_barang"]
-            kategori = info.get("tipe", "dry")
-            keterangan = info.get("keterangan", "-")
+        nama_input = normalize(
+            parsed["nama"]
+        )
 
-            qty_formatted = format_qty(qty)
+        # ================= BARANG TIDAK ADA =================
+        if nama_input not in database:
 
-            # pilih sheet otomatis
-            if normalize(kategori) == "frozen":
-                target_sheet = sheet_frozen
-            else:
-                target_sheet = sheet_dry
+            gagal.append(
+                f"❌ Tidak ditemukan: {parsed['nama']}"
+            )
 
-            # simpan ke sheet
-            target_sheet.append_row([
-                nama_barang,
-                kode,
-                jam,
-                qty_formatted,
-                user,          # 🔥 FIX: sekarang nama, bukan ID
-                keterangan
-            ])
+            continue
 
-            success_list.append(f"- {nama_barang.title()} ({qty_formatted})")
+        barang = database[nama_input]
 
-        except Exception as e:
-            print("ERROR BELANJA:", e)
-            error_list.append(f"❌ Error: {line}")
+        nama_barang = barang["nama"]
+
+        kategori = barang["kategori"]
+
+        keterangan = barang["keterangan"]
+
+        # ================= DATA ROW =================
+        data_row = [
+            nama_barang,
+            parsed["kode"],
+            jam,
+            parsed["qty"],
+            user,
+            keterangan
+        ]
+
+        # ================= FROZEN =================
+        if kategori == "frozen":
+
+            append_custom(
+                sheet_harian,
+                13,  # M
+                8,
+                data_row
+            )
+
+        # ================= DRY =================
+        else:
+
+            append_custom(
+                sheet_harian,
+                3,  # C
+                8,
+                data_row
+            )
+
+        berhasil.append(
+            f"✅ {nama_barang} ({parsed['qty']})"
+        )
 
     # ================= OUTPUT =================
-    messages = []
+    hasil_text = ""
 
-    if success_list:
-        messages.append("✅ Berhasil input:\n" + "\n".join(success_list))
+    # ================= BERHASIL =================
+    if berhasil:
 
-    if error_list:
-        messages.append("\n".join(error_list))
+        hasil_text += "✅ Berhasil input:\n"
 
-    if messages:
-        await update.message.reply_text("\n\n".join(messages))
+        for item in berhasil:
+
+            hasil_text += f"- {item}\n"
+
+    # ================= GAGAL =================
+    if gagal:
+
+        hasil_text += "\n❌ Gagal:\n"
+
+        for item in gagal:
+
+            hasil_text += f"- {item}\n"
+
+    # ================= KIRIM HASIL =================
+    await update.message.reply_text(
+        hasil_text
+    )
