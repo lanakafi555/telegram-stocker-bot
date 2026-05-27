@@ -2,8 +2,10 @@ import os
 import json
 import gspread
 
+from dotenv import load_dotenv
 from oauth2client.service_account import ServiceAccountCredentials
 
+load_dotenv()
 
 scope = [
     "https://spreadsheets.google.com/feeds",
