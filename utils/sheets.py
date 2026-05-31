@@ -1,5 +1,4 @@
 import os
-import json
 import gspread
 
 from dotenv import load_dotenv
@@ -12,32 +11,34 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds_dict = json.loads(os.environ["GOOGLE_CREDS"])
+# ================= GOOGLE CREDS =================
 
-creds = ServiceAccountCredentials.from_json_keyfile_dict(
-    creds_dict,
+creds = ServiceAccountCredentials.from_json_keyfile_name(
+    "credentials.json",
     scope
 )
+
 client = gspread.authorize(creds)
 
-
 # ================= FILE DATABASE =================
+
 spreadsheet_db = client.open_by_key(
-    "1JUfMdbaxisCQD-e-ggJhROThq544_eKELW2uVJt_1q4"
+    "1JUfMbaxisCQ-e-g8jnROThq54_ekELNzUVT_1q4"
 )
 
 sheet_database = spreadsheet_db.worksheet(
     "database_barang"
 )
 
-
 # ================= FILE BELANJA =================
+
 spreadsheet_belanja = client.open_by_key(
-    "1JCt60WaLLuELWzuVX1lo_K_FlGoEyLaML8LiBePkb-E"
+    "1JCt60WaLLUeLWzuVx11o_K_FIGoEyLaML8L1BePkb-E"
 )
 
 sheet_kedatangan = spreadsheet_db.worksheet("kedatangan_barang")
 sheet_invoice = spreadsheet_db.worksheet("invoice_log")
+
 
 def get_next_invoice_number(today):
     records = sheet_invoice.get_all_records()
@@ -46,8 +47,4 @@ def get_next_invoice_number(today):
         r for r in records if str(r.get("tanggal", "")) == today
     ]
 
-    if not today_records:
-        return 1
-
-    last_number = max(int(r["nomor"]) for r in today_records)
-    return last_number + 1
+    return len(today_records) + 1
