@@ -1,10 +1,7 @@
 import os
 import gspread
 
-from dotenv import load_dotenv
 from oauth2client.service_account import ServiceAccountCredentials
-
-load_dotenv()
 
 scope = [
     "https://spreadsheets.google.com/feeds",
@@ -23,7 +20,7 @@ client = gspread.authorize(creds)
 # ================= FILE DATABASE =================
 
 spreadsheet_db = client.open_by_key(
-    "1JUfMbaxisCQ-e-g8jnROThq54_ekELNzUVT_1q4"
+    "1JUfMdbaxisCQD-e-ggJhROThq544_eKELW2uVJt_1q4"
 )
 
 sheet_database = spreadsheet_db.worksheet(
@@ -33,7 +30,7 @@ sheet_database = spreadsheet_db.worksheet(
 # ================= FILE BELANJA =================
 
 spreadsheet_belanja = client.open_by_key(
-    "1JCt60WaLLUeLWzuVx11o_K_FIGoEyLaML8L1BePkb-E"
+    "1JCt60WaLLuELWzuVX1lo_K_FlGoEyLaML8LiBePkb-E"
 )
 
 sheet_kedatangan = spreadsheet_db.worksheet("kedatangan_barang")
