@@ -1,6 +1,7 @@
 ALLOWED_USERS = {
     1342448625: "Kafi",  # ganti kalau ada tambahan user
-    5159165529: "Piscesia"
+    5159165529: "Piscesia",
+    5811316076: "Alvin"
 }
 
 TOPIC_MAP = {
