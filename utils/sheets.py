@@ -30,7 +30,7 @@ sheet_database = spreadsheet_db.worksheet(
 # ================= FILE BELANJA =================
 
 spreadsheet_belanja = client.open_by_key(
-    "1XOsBXIx6o8N4-KSNROq_lMlYqSie1msYEOmEZIisgMQ"
+    "1AaFdjI77GW8QQIVPR6Amx5f4nppwPr_booC1jkCq-A0"
 )
 
 sheet_kedatangan = spreadsheet_db.worksheet("kedatangan_barang")
